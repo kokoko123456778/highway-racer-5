@@ -1094,7 +1094,7 @@ static void drawLine(int x0, int y0, int x1, int y1, u32 c, int th) {
 //  ХАЙВЕЙ РЕЙСЕР: ночная трасса, трафик, опасные обгоны и множитель очков
 // =====================================================================
 #include <algorithm>
-enum { GS_TITLE, GS_PLAY, GS_CRASH, GS_OVER, GS_PAUSE, GS_GARAGE };
+enum { GS_TITLE, GS_PLAY, GS_CRASH, GS_OVER, GS_PAUSE, GS_GARAGE, GS_LAYOUT };
 static int gs = GS_TITLE; static bool hasBest = false;
 static int bestScores[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}}, diff = 1;                          // рекорды по уровням и текущая сложность (0 легко, 1 нормально, 2 жёстко)
 static bool chaseMode = false; static int chaseBest[3] = {0, 0, 0};                                  // режим «уйти от полиции» и его рекорды по сложности
@@ -134676,15 +134676,19 @@ static unsigned carIdN = 1;
 static const float DRAW_SW = 235.0f, DRAW_GL = 150.0f;
 static float drawDist() { return gGL ? DRAW_GL : DRAW_SW; }
 
+struct Lay { bool custom; float nx, ny, bx, by, lx, ly, rx, ry, scale; };
+static Lay lay = {false, 0, 0, 0, 0, 0, 0, 0, 0, 1.0f};
 static void saveBest() {
   FILE *f = fopen(pth("racer.sav"), "wb"); if (!f) return;
-  int d[20] = {777}; for (int m = 0; m < 3; m++) for (int k = 0; k < 3; k++) d[1 + m * 3 + k] = bestScores[m][k];
-  d[10] = diff; d[11] = soundOn ? 1 : 0; d[12] = roadMode; d[13] = carSel; d[14] = paintSel; d[15] = PCARS[clampi(carSel, 0, NPCAR - 1)].vid ? 3000 + PCARS[clampi(carSel, 0, NPCAR - 1)].vid : 2000 + EMBK[PCARS[clampi(carSel, 0, NPCAR - 1)].mesh]; d[16] = ctrlMode; for (int k = 0; k < 3; k++) d[17 + k] = chaseBest[k]; fwrite(d, sizeof d, 1, f); fclose(f);
+  int d[30] = {777}; for (int m = 0; m < 3; m++) for (int k = 0; k < 3; k++) d[1 + m * 3 + k] = bestScores[m][k];
+  d[10] = diff; d[11] = soundOn ? 1 : 0; d[12] = roadMode; d[13] = carSel; d[14] = paintSel; d[15] = PCARS[clampi(carSel, 0, NPCAR - 1)].vid ? 3000 + PCARS[clampi(carSel, 0, NPCAR - 1)].vid : 2000 + EMBK[PCARS[clampi(carSel, 0, NPCAR - 1)].mesh]; d[16] = ctrlMode; for (int k = 0; k < 3; k++) d[17 + k] = chaseBest[k];
+  d[20] = lay.custom ? 1 : 0; { float v[9] = {lay.nx, lay.ny, lay.bx, lay.by, lay.lx, lay.ly, lay.rx, lay.ry, lay.scale}; for (int k = 0; k < 9; k++) d[21 + k] = (int)lroundf(v[k] * 10000); } fwrite(d, sizeof d, 1, f); fclose(f);
 }
 static bool loadBest() {
-  FILE *f = fopen(pth("racer.sav"), "rb"); if (!f) return false; int d[20] = {0}; size_t n = fread(d, sizeof(int), 20, f); fclose(f);
+  FILE *f = fopen(pth("racer.sav"), "rb"); if (!f) return false; int d[30] = {0}; size_t n = fread(d, sizeof(int), 30, f); fclose(f);
   if (n >= 15 && d[0] == 777) { for (int m = 0; m < 3; m++) for (int k = 0; k < 3; k++) bestScores[m][k] = imax(0, d[1 + m * 3 + k]);
-    diff = clampi(d[10], 0, 2); soundOn = d[11] != 0; roadMode = clampi(d[12], 0, 2); paintSel = clampi(d[14], -1, 7); if (n >= 17) ctrlMode = clampi(d[16], 0, 2); if (n >= 20) for (int k = 0; k < 3; k++) chaseBest[k] = imax(0, d[17 + k]);
+    diff = clampi(d[10], 0, 2); soundOn = d[11] != 0; roadMode = clampi(d[12], 0, 2); paintSel = clampi(d[14], -1, 7); if (n >= 17) ctrlMode = clampi(d[16], 0, 2);
+    if (n >= 30 && d[20]) { float *v[9] = {&lay.nx, &lay.ny, &lay.bx, &lay.by, &lay.lx, &lay.ly, &lay.rx, &lay.ry, &lay.scale}; for (int k = 0; k < 9; k++) *v[k] = d[21 + k] / 10000.0f; lay.scale = clampf(lay.scale, 0.6f, 1.8f); lay.custom = true; } if (n >= 20) for (int k = 0; k < 3; k++) chaseBest[k] = imax(0, d[17 + k]);
     if (n >= 16 && d[15] >= 3000) { for (int i = 0; i < NPCAR; i++) if (PCARS[i].vid == d[15] - 3000) carSel = i; }   // гоночная версия
     else if (n >= 16 && d[15] >= 2000) carSel = pcarIndexOfMesh(meshOfEmbK(d[15] - 2000));
     else if (n >= 16 && d[15] >= 1000 && d[15] < 1040) { static const int OLD40[40] = {7, 2, 9, 29, 32, 4, 30, 12, 26, 24, 33, 8, 19, 10, 28, 27, 46, 0, 1, 3, 5, 6, 11, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 25, 31, 34, 35, 36, 37, 40};
@@ -135152,14 +135156,32 @@ static void soundUpdate() {
 struct Finger { long long id; int role, x, y, sx, sy; bool on; };   // роль: 0 руль, 2 кнопка меню, 3 нитро, 4 влево, 5 вправо, 6 тормоз
 static Finger fing[6];
 static int JR() { return imin(IW, IH) / 6; }
-static void nitroRect(int &cx, int &cy, int &r) { r = (int)(JR() * 0.8f); cx = IW - r - fs * 8; cy = IH - r - fs * 8; }
-static void brakeRect(int &x, int &y, int &w, int &h) { int cx, cy, r; nitroRect(cx, cy, r); w = r * 2; h = (int)(r * 1.5f); x = cx - r - fs * 6 - w; y = cy + r - h; }
+// расположение кнопок: можно двигать в меню «КНОПКИ»; координаты - доли экрана, чтобы не зависеть от разрешения
+static void layDefaults() {
+  int r = (int)(JR() * 0.8f); float ncx = IW - r - fs * 8.0f, ncy = IH - r - fs * 8.0f;
+  lay.nx = ncx / IW; lay.ny = ncy / IH; lay.bx = (ncx - r - fs * 6 - r) / IW; lay.by = (ncy + r - r * 0.75f) / IH;
+  int ar = (int)(JR() * 0.75f); lay.lx = 0.125f; lay.ly = (IH - ar - fs * 8.0f) / IH; lay.rx = 0.375f; lay.ry = lay.ly; lay.scale = 1.0f;
+}
+static int layR(float k) { return imax(fs * 6, (int)(JR() * k * (lay.custom ? lay.scale : 1.0f))); }
+static void nitroRect(int &cx, int &cy, int &r) { if (!lay.custom) { r = (int)(JR() * 0.8f); cx = IW - r - fs * 8; cy = IH - r - fs * 8; return; } r = layR(0.8f); cx = (int)(lay.nx * IW); cy = (int)(lay.ny * IH); }
+static void brakeRect(int &x, int &y, int &w, int &h) { int cx, cy, r; nitroRect(cx, cy, r); w = r * 2; h = (int)(r * 1.5f);
+  if (!lay.custom) { x = cx - r - fs * 6 - w; y = cy + r - h; return; } x = (int)(lay.bx * IW) - w / 2; y = (int)(lay.by * IH) - h / 2; }
+static void arrowPos(int sd, int &cx, int &cy, int &r) { r = lay.custom ? layR(0.75f) : (int)(JR() * 0.75f);
+  if (!lay.custom) { cx = sd < 0 ? IW / 8 : IW * 3 / 8; cy = IH - r - fs * 8; return; } cx = (int)((sd < 0 ? lay.lx : lay.rx) * IW); cy = (int)((sd < 0 ? lay.ly : lay.ry) * IH); }
 static bool inRect(int px, int py, int x, int y, int w, int h) { return px >= x && px < x + w && py >= y && py < y + h; }
 static void fingerDown(long long id, int x, int y) {
   for (int i = 0; i < 6; i++) if (!fing[i].on) {
     Finger &f = fing[i]; f.on = true; f.id = id; f.x = f.sx = x; f.y = f.sy = y;
     if (gs == GS_PLAY) {
       if (x >= IW / 2 - fs * 12 && x < IW / 2 + fs * 12 && y < fs * 32) { gs = GS_PAUSE; actHeld = false; joyX = joyY = 0; for (int k = 0; k < 6; k++) fing[k].on = false; return; }   // кнопка паузы
+      if (lay.custom) {                                            // свои места кнопок: сначала смотрим, в какую попали
+        int cx, cy, r, bx, by, bw, bh; nitroRect(cx, cy, r); brakeRect(bx, by, bw, bh); int ax, ay, ar, bx2, by2, br2; arrowPos(-1, ax, ay, ar); arrowPos(1, bx2, by2, br2);
+        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) < r * r * 3 / 2) { f.role = 3; actHeld = true; }
+        else if (ctrlMode != CT_STICK && inRect(x, y, bx - fs * 3, by - fs * 3, bw + fs * 6, bh + fs * 6)) f.role = 6;
+        else if (ctrlMode == CT_BUTTONS && (x - ax) * (x - ax) + (y - ay) * (y - ay) < ar * ar * 2) f.role = 4;
+        else if (ctrlMode == CT_BUTTONS && (x - bx2) * (x - bx2) + (y - by2) * (y - by2) < br2 * br2 * 2) f.role = 5;
+        else f.role = ctrlMode == CT_STICK ? 0 : 7;                // в режиме стика руль - в любом свободном месте
+        return; }
       if (ctrlMode == CT_STICK) { if (x < IW / 2) f.role = 0; else { f.role = 3; actHeld = true; } }
       else { int bx, by, bw, bh; brakeRect(bx, by, bw, bh);
         if (ctrlMode == CT_BUTTONS && x < IW / 2) f.role = x < IW / 4 ? 4 : 5;
@@ -135293,8 +135315,7 @@ static void drawHud() {
   if (ctrlMode != CT_STICK) { int bx, by, bw, bh; brakeRect(bx, by, bw, bh); bool B = joyY > 0.5f;
     fillRectA(bx, by, bw, bh, B ? RGB(255, 80, 70) : RGB(170, 40, 40), B ? 150 : 70); drawTextSh(bx + bw / 2, by + bh / 2 - fs * 3, "ТОРМОЗ", fs, RGB(255, 255, 255), 1); }
   if (ctrlMode == CT_BUTTONS) { bool L = false, Rr = false; for (int i = 0; i < 6; i++) if (fing[i].on) { if (fing[i].role == 4) L = true; if (fing[i].role == 5) Rr = true; }
-    int r = (int)(JR() * 0.75f), y0 = IH - r - fs * 8;
-    for (int sd = -1; sd <= 1; sd += 2) { int cx = sd < 0 ? IW / 8 : IW * 3 / 8; bool on = sd < 0 ? L : Rr; fillCircle(cx, y0, r, RGB(255, 255, 255), on ? 90 : 30);
+    for (int sd = -1; sd <= 1; sd += 2) { int cx, y0, r; arrowPos(sd, cx, y0, r); bool on = sd < 0 ? L : Rr; fillCircle(cx, y0, r, RGB(255, 255, 255), on ? 90 : 30);
       for (int k = 0; k <= r / 2; k++) { int hh = (r / 2 - k) * 9 / 10, x = cx - sd * r / 4 + sd * k; fillRectA(x, y0 - hh, 1, hh * 2 + 1, RGB(255, 255, 255), on ? 240 : 170); } } }   // стрелки-треугольники
   if (ctrlMode == CT_TILT) { float st = joyX; int w = IW / 4, x0 = IW / 4 - w / 2, y0 = IH - fs * 18; fillRectA(x0, y0, w, fs * 3, RGB(255, 255, 255), 40); fillRectA(x0 + w / 2 - 1, y0 - fs, 2, fs * 5, RGB(255, 255, 255), 120);
     fillRectA(x0 + w / 2 + (int)(st * (w / 2 - fs * 2)) - fs * 2, y0 - fs * 2, fs * 4, fs * 7, RGB(255, 220, 90), 220); }
@@ -135326,6 +135347,38 @@ static void drawFps() {
 }
 
 // ---------- кадры ----------
+// ---------- настройка расположения кнопок ----------
+static int layDrag = -1;
+static void demoStep(float dt);
+static void frameLayout(float dt) {
+  demoStep(dt); drawWorld(true); fillRectA(0, 0, IW, IH, RGB(0, 0, 0), 90);
+  if (!lay.custom) { layDefaults(); lay.custom = true; }
+  int cx, cy, r, bx, by, bw, bh, ax, ay, ar, rx2, ry2, rr2; nitroRect(cx, cy, r); brakeRect(bx, by, bw, bh); arrowPos(-1, ax, ay, ar); arrowPos(1, rx2, ry2, rr2);
+  // тянем кнопку пальцем
+  if (P.pressed) { layDrag = -1;
+    if ((P.x - cx) * (P.x - cx) + (P.y - cy) * (P.y - cy) < r * r) layDrag = 0;
+    else if (inRect(P.x, P.y, bx, by, bw, bh)) layDrag = 1;
+    else if ((P.x - ax) * (P.x - ax) + (P.y - ay) * (P.y - ay) < ar * ar) layDrag = 2;
+    else if ((P.x - rx2) * (P.x - rx2) + (P.y - ry2) * (P.y - ry2) < rr2 * rr2) layDrag = 3; }
+  if (P.down && layDrag >= 0) { float fx = clampf(P.x / (float)IW, 0.04f, 0.96f), fy = clampf(P.y / (float)IH, 0.12f, 0.96f);
+    if (layDrag == 0) { lay.nx = fx; lay.ny = fy; } else if (layDrag == 1) { lay.bx = fx; lay.by = fy; } else if (layDrag == 2) { lay.lx = fx; lay.ly = fy; } else { lay.rx = fx; lay.ry = fy; } }
+  if (!P.down) layDrag = -1;
+  nitroRect(cx, cy, r); brakeRect(bx, by, bw, bh); arrowPos(-1, ax, ay, ar); arrowPos(1, rx2, ry2, rr2);
+  fillCircle(cx, cy, r, RGB(60, 120, 200), layDrag == 0 ? 200 : 140); drawTextSh(cx, cy - fs * 3, "НИТРО", fs, RGB(255, 255, 255), 1);
+  fillRectA(bx, by, bw, bh, RGB(170, 40, 40), layDrag == 1 ? 220 : 150); drawTextSh(bx + bw / 2, by + bh / 2 - fs * 3, "ТОРМОЗ", fs, RGB(255, 255, 255), 1);
+  for (int sd = -1; sd <= 1; sd += 2) { int x0 = sd < 0 ? ax : rx2, y0 = sd < 0 ? ay : ry2, rr = sd < 0 ? ar : rr2; bool on = layDrag == (sd < 0 ? 2 : 3);
+    fillCircle(x0, y0, rr, RGB(255, 255, 255), on ? 120 : 60); for (int k = 0; k <= rr / 2; k++) { int hh = (rr / 2 - k) * 9 / 10, x = x0 - sd * rr / 4 + sd * k; fillRectA(x, y0 - hh, 1, hh * 2 + 1, RGB(255, 255, 255), 220); } }
+  drawTextSh(IW / 2, fs * 6, "РАСПОЛОЖЕНИЕ КНОПОК", fs * 2, RGB(255, 220, 90), 1);
+  drawText(IW / 2, fs * 24, "ПЕРЕТАЩИ КНОПКУ ПАЛЬЦЕМ НА УДОБНОЕ МЕСТО", fs, RGB(220, 225, 240), 1);
+  drawText(IW / 2, fs * 34, "ТОРМОЗ - В РЕЖИМАХ КНОПКИ И НАКЛОН, СТРЕЛКИ - В РЕЖИМЕ КНОПКИ", imax(1, fs - 1), RGB(190, 200, 220), 1);
+  drawText(IW / 2, fs * 43, "В РЕЖИМЕ СТИК РУЛЬ ПОЯВЛЯЕТСЯ В ЛЮБОМ СВОБОДНОМ МЕСТЕ", imax(1, fs - 1), RGB(190, 200, 220), 1);
+  int bw2 = IW / 7, bh2 = fs * 14, y2 = IH / 2 - bh2 / 2, x2 = IW / 2 - (bw2 * 4 + fs * 9) / 2; char t[32];
+  if (button(x2, y2, bw2, bh2, "РАЗМЕР -", lay.scale > 0.61f, RGB(70, 80, 110))) lay.scale = fmaxv(0.6f, lay.scale - 0.1f);
+  snprintf(t, sizeof t, "%d%%", (int)lroundf(lay.scale * 100)); drawTextSh(x2 + bw2 + fs * 3 + bw2 / 2, y2 + bh2 / 2 - fs * 3, t, fs + 1, RGB(255, 255, 255), 1);
+  if (button(x2 + (bw2 + fs * 3) * 2, y2, bw2, bh2, "РАЗМЕР +", lay.scale < 1.79f, RGB(70, 80, 110))) lay.scale = fminv(1.8f, lay.scale + 0.1f);
+  if (button(x2 + (bw2 + fs * 3) * 3, y2, bw2, bh2, "СБРОСИТЬ", true, RGB(120, 70, 60))) { lay.custom = false; layDefaults(); lay.custom = true; }
+  if (button(IW / 2 - bw2, y2 + bh2 + fs * 6, bw2 * 2, bh2, "ГОТОВО", true, RGB(60, 150, 70))) { saveBest(); gs = GS_TITLE; say("РАСПОЛОЖЕНИЕ СОХРАНЕНО"); }
+}
 static void framePause() {
   drawWorld(false); fillRectA(0, 0, IW, IH, RGB(0, 0, 10), 150);
   int pw = imin(IW - fs * 8, fs * 160), ph = IH / 2, px0 = IW / 2 - pw / 2, py0 = IH / 4;
@@ -135356,7 +135409,8 @@ static void frameTitle(float dt) {
     snprintf(t, sizeof t, "СЛОЖНОСТЬ: %s", DIFFN[diff]); if (button(IW / 2 - sw - gap / 2, y2, sw, sh, t, true, diff == 0 ? RGB(60, 130, 80) : (diff == 1 ? RGB(150, 120, 40) : RGB(170, 50, 50)))) { diff = (diff + 1) % 3; saveBest(); }
     snprintf(t, sizeof t, "ЗВУК: %s", soundOn ? "ВКЛ" : "ВЫКЛ"); if (button(IW / 2 + gap / 2, y2, sw, sh, t, true, soundOn ? RGB(60, 120, 170) : RGB(90, 90, 100))) { soundOn = !soundOn; if (soundOn) audioInit(); saveBest(); }
     y2 += sh + gap;
-    snprintf(t, sizeof t, "УПРАВЛЕНИЕ: %s", CTN[ctrlMode]); if (button(IW / 2 - sw / 2, y2, sw, sh, t, true, ctrlMode == CT_STICK ? RGB(70, 90, 140) : (ctrlMode == CT_BUTTONS ? RGB(140, 90, 50) : RGB(60, 130, 120)))) {
+    if (button(IW / 2 + gap / 2, y2, sw, sh, "КНОПКИ: ПЕРЕСТАВИТЬ", true, RGB(90, 70, 130))) { gs = GS_LAYOUT; layDrag = -1; }
+    snprintf(t, sizeof t, "УПРАВЛЕНИЕ: %s", CTN[ctrlMode]); if (button(IW / 2 - sw - gap / 2, y2, sw, sh, t, true, ctrlMode == CT_STICK ? RGB(70, 90, 140) : (ctrlMode == CT_BUTTONS ? RGB(140, 90, 50) : RGB(60, 130, 120)))) {
       ctrlMode = (ctrlMode + 1) % 3; if (ctrlMode == CT_TILT && !(tiltOk = tiltOpen())) { ctrlMode = CT_STICK; say("НА ЭТОМ ТЕЛЕФОНЕ НЕТ ДАТЧИКА НАКЛОНА"); }
       else say(ctrlMode == CT_STICK ? "СЛЕВА ПЛАВАЮЩИЙ СТИК, СПРАВА НИТРО" : (ctrlMode == CT_BUTTONS ? "СЛЕВА КНОПКИ ВЛЕВО/ВПРАВО, СПРАВА ТОРМОЗ И НИТРО" : "ДЕРЖИ ТЕЛЕФОН КАК РУЛЬ. СЛЕВА ТОРМОЗ, СПРАВА НИТРО")); saveBest(); }
     y2 += sh + fs * 4;
@@ -135476,7 +135530,7 @@ int main(int argc, char **argv) {
       int mx, my;
       switch (ev.type) {
         case SDL_QUIT: running = false; break;
-        case SDL_KEYDOWN: if (ev.key.keysym.sym == SDLK_ESCAPE) { if (gs == GS_TITLE) running = false; else if (gs == GS_PLAY) gs = GS_PAUSE; else gs = GS_TITLE; } break;
+        case SDL_KEYDOWN: if (ev.key.keysym.sym == SDLK_ESCAPE) { if (gs == GS_TITLE) running = false; else if (gs == GS_PLAY) gs = GS_PAUSE; else { if (gs == GS_LAYOUT) saveBest(); gs = GS_TITLE; } } break;
         case SDL_FINGERDOWN: mapPt((int)(ev.tfinger.x * SW), (int)(ev.tfinger.y * SH), mx, my); fingerDown((long long)ev.tfinger.fingerId, mx, my); break;
         case SDL_FINGERMOTION: mapPt((int)(ev.tfinger.x * SW), (int)(ev.tfinger.y * SH), mx, my); fingerMove((long long)ev.tfinger.fingerId, mx, my); break;
         case SDL_FINGERUP: mapPt((int)(ev.tfinger.x * SW), (int)(ev.tfinger.y * SH), mx, my); fingerUp((long long)ev.tfinger.fingerId, mx, my); break;
@@ -135494,7 +135548,7 @@ int main(int argc, char **argv) {
       else if (e.type != 5) { int mx, my; mapPt(e.x, e.y, mx, my); if (e.type == 1) fingerDown(-1, mx, my); else if (e.type == 3) fingerMove(-1, mx, my); else fingerUp(-1, mx, my); }
     }
 #endif
-    if (gs == GS_TITLE) frameTitle(dt); else if (gs == GS_PLAY) framePlay(dt); else if (gs == GS_CRASH) frameCrash(dt); else if (gs == GS_PAUSE) framePause(); else if (gs == GS_GARAGE) frameGarage(dt); else frameOver();
+    if (gs == GS_TITLE) frameTitle(dt); else if (gs == GS_PLAY) framePlay(dt); else if (gs == GS_CRASH) frameCrash(dt); else if (gs == GS_PAUSE) framePause(); else if (gs == GS_GARAGE) frameGarage(dt); else if (gs == GS_LAYOUT) frameLayout(dt); else frameOver();
     soundUpdate(); drawFps();
     gfxPresent();
     Uint32 spent2 = SDL_GetTicks() - now; { fpsAcc += dt; fpsN++; if (fpsAcc >= 2.0f) { fpsShow = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; } }
