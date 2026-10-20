@@ -78,6 +78,9 @@ static inline u32 RGB(int r, int g, int b) {
 static inline int CR(u32 c) { return (c >> 16) & 255; }
 static inline int CG(u32 c) { return (c >> 8) & 255; }
 static inline int CB(u32 c) { return c & 255; }
+static inline u32 blendFast(u32 d, u32 rbC, u32 gC, u32 ia) {   // rbC/gC - цвет, уже умноженный на альфу (0..256)
+  return ((((d & 0xFF00FFu) * ia + rbC) >> 8) & 0xFF00FFu) | ((((d & 0x00FF00u) * ia + gC) >> 8) & 0x00FF00u);
+}
 static u32 mixc(u32 a, u32 b, float t) {
   if (t <= 0) return a;
   if (t >= 1) return b;
@@ -549,6 +552,9 @@ static void fillRect(int x, int y, int w, int h, u32 c) {
 static void fillRectA(int x, int y, int w, int h, u32 c, int a) {   // a: 0..255
   int x0 = imax(x, 0), y0 = imax(y, 0), x1 = imin(x + w, IW), y1 = imin(y + h, IH);
   int ia = 255 - a;
+  if (!gOverlay) { if (a <= 0) return; u32 a8 = (u32)a + (a > 127), ia8 = 256 - a8, rbC = (c & 0xFF00FFu) * a8, gC = (c & 0x00FF00u) * a8;
+    for (int j = y0; j < y1; j++) { u32 *r = fb + j * IW; for (int i = x0; i < x1; i++) r[i] = blendFast(r[i], rbC, gC, ia8); }
+    return; }
   for (int j = y0; j < y1; j++) {
     u32 *r = fb + j * IW;
     for (int i = x0; i < x1; i++) {
@@ -561,6 +567,10 @@ static void fillRectA(int x, int y, int w, int h, u32 c, int a) {   // a: 0..255
 }
 static void fillCircle(int cx, int cy, int r, u32 c, int a) {
   int ia = 255 - a;
+  if (!gOverlay) { if (a <= 0 || r < 0) return; u32 a8 = (u32)imin(a, 255) + (a > 127), ia8 = 256 - a8, rbC = (c & 0xFF00FFu) * a8, gC = (c & 0x00FF00u) * a8;
+    for (int j = -r; j <= r; j++) { int y = cy + j; if ((unsigned)y >= (unsigned)IH) continue; int w = (int)sqrtf((float)(r * r - j * j)), xa = imax(0, cx - w), xb = imin(IW - 1, cx + w);
+      u32 *row = fb + y * IW; for (int x = xa; x <= xb; x++) row[x] = blendFast(row[x], rbC, gC, ia8); }
+    return; }
   for (int j = -r; j <= r; j++) {
     int y = cy + j;
     if ((unsigned)y >= (unsigned)IH) continue;
@@ -135303,10 +135313,10 @@ static void drawFx() {                                                       // 
     int nl = gGL ? 18 : 26; for (int i = 0; i < nl; i++) { unsigned h = hsh(i * 977u + (unsigned)(gTime * 30.0f) * 13u); float a = (h & 1023) / 1023.0f * 6.2832f, r0 = IH * (0.22f + (h >> 10 & 255) / 255.0f * 0.25f), r1 = r0 + IH * (0.25f + 0.35f * nitroK);
       int x0 = (int)(IW * 0.5f + cosf(a) * r0 * 1.6f), y0 = (int)(vcy + sinf(a) * r0), x1 = (int)(IW * 0.5f + cosf(a) * r1 * 1.6f), y1 = (int)(vcy + sinf(a) * r1);
       drawLine(x0, y0, x1, y1, (h >> 20) & 1 ? RGB(170, 230, 255) : RGB(90, 140, 255), (h >> 21) & 1 ? 2 : 1); }
-    for (int b = 0; b < 5; b++) { int t = fs * (3 + b * 4); int a = (int)(24 * nitroK);               // синяя виньетка по краям
-      fillRectA(0, 0, IW, t, RGB(60, 120, 255), a); fillRectA(0, IH - t, IW, t, RGB(60, 120, 255), a); fillRectA(0, t, t, IH - 2 * t, RGB(60, 120, 255), a); fillRectA(IW - t, t, t, IH - 2 * t, RGB(60, 120, 255), a); }
+    for (int b = 0; b < 5; b++) { int t0 = b ? fs * (3 + (b - 1) * 4) : 0, t1 = fs * (3 + b * 4), w = t1 - t0;   // синяя виньетка: кольца без наложения, к краю плотнее
+      int a = (int)((24 * nitroK + 60 * nitroKick * nitroKick) * (5 - b)); a = imin(a, 200); u32 vc = mixc(RGB(60, 120, 255), RGB(170, 215, 255), nitroKick);
+      fillRectA(t0, t0, IW - 2 * t0, w, vc, a); fillRectA(t0, IH - t1, IW - 2 * t0, w, vc, a); fillRectA(t0, t1, w, IH - 2 * t1, vc, a); fillRectA(IW - t1, t1, w, IH - 2 * t1, vc, a); }
   }
-  if (nitroKick > 0.02f) fillRectA(0, 0, IW, IH, RGB(150, 200, 255), (int)(80 * nitroKick * nitroKick));
 }
 static float fpsShow = 0, fpsAcc = 0; static int fpsN = 0;
 static void drawFps() {
